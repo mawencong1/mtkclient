@@ -8,10 +8,14 @@ MTKClient是一套mtk工具，用于读写MTK芯片的手机。具体的功能�
 
 ## 使用
 以coolpad手机为例，如图所示，Load Partition(s)模块提供在线读取固件功能。点击任何ext4格式的分区，将以磁盘形式呈现分区内容。
+
 <img width="382" alt="image" src="https://user-images.githubusercontent.com/76193596/207268179-7e8db99a-afd5-46f6-99b2-9eb16586817a.png">
+
 如图所示，是磁盘形式呈现的system分区。对于目录文件，点击后，进入目录内部。
+
 <img width="383" alt="image" src="https://user-images.githubusercontent.com/76193596/207270706-5a94a835-6738-440a-a57e-337ac7f9d606.png">
 
 对于普通文件，点击后，通过十六进制和字符串两种形式展现文本内容。
+
 <img width="382" alt="image" src="https://user-images.githubusercontent.com/76193596/207270756-5a822ff3-fa57-4888-8977-07f1a0199325.png">
 
