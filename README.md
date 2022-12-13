@@ -4,7 +4,9 @@ based on [@bkerler's mtkclient](https://github.com/bkerler/mtkclient) and [cubin
 ## 功能
 MTKClient是一套mtk工具，用于读写MTK芯片的手机。具体的功能参见https://github.com/bkerler/mtkclient
 
-我们拓展了它的功能，增加了在内存中浏览分区的功能。对于比较大的分区，如system、userdata，分区数据量较大，一次性传输时间较长。它们往往是ext4格式的分区，可以通过挂载的方式，以磁盘形式读取。
+我们拓展了它的功能，增加了在内存中浏览分区的功能。对于比较大的分区，如system、userdata，分区数据量较大，一次性传输时间较长。下载完成后，需要通过挂载的方式，打开分区内容。
+
+经过分析，手机中较大的分区往往是ext4格式的分区。对于这些分区，定位超级块位置获取分区信息；定位根目录的inode，以图形化界面的形式展现根目录内容。依次递归，以磁盘形式在内存中呈现分区内容。
 
 ## 使用
 以coolpad手机为例，如图所示，Load Partition(s)模块提供在线读取固件功能。点击任何ext4格式的分区，将以磁盘形式呈现分区内容。
