@@ -11,15 +11,16 @@ import logging
 import ctypes
 from functools import partial
 from PySide6.QtCore import Qt, QVariantAnimation, Signal, QObject, QSize, QTranslator, QLocale, QLibraryInfo, \
-    Slot, QCoreApplication
+    Slot, QCoreApplication, QRect
 from PySide6.QtGui import QTextOption, QPixmap, QTransform, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QCheckBox, QVBoxLayout, QHBoxLayout, QLineEdit, \
-                            QPushButton
+    QPushButton, QTextBrowser
 
 from mtkclient.Library.mtk_class import Mtk
 from mtkclient.Library.mtk_da_cmd import DA_handler
 from mtkclient.Library.gpt import gpt_settings
 from mtkclient.Library.mtk_main import Main, Mtk_Config
+from mtkclient.expansion import ext4
 
 from mtkclient.gui.readFlashPartitions import ReadFlashWindow
 from mtkclient.gui.writeFlashPartitions import WriteFlashWindow
@@ -62,7 +63,7 @@ class DeviceHandler(QObject):
                             update_status_text=self.update_status_text)
         config.gpt_settings = gpt_settings(gpt_num_part_entries='0', gpt_part_entry_size='0',
                                            gpt_part_entry_start_lba='0')  # This actually sets the right GPT settings..
-        self.loglevel = logging.DEBUG
+        self.loglevel = logging.INFO
         self.da_handler = DA_handler(Mtk(config=config, loglevel=logging.INFO), loglevel)
 
 
@@ -144,6 +145,10 @@ class MainWindow(QMainWindow):
         self.devhandler = None
         self.readflash = None
 
+        self.volume = None
+
+
+
     def showDebugInfo(self):
         self.ui.connectInfo.setHidden(True)
         self.ui.tabWidget.setCurrentWidget(self.ui.debugtab)
@@ -202,6 +207,7 @@ class MainWindow(QMainWindow):
         print("DONE")
         self.ui.readpreloaderbtn.setEnabled(True)
         self.ui.readpartitionsbtn.setEnabled(True)
+        # self.ui.loadbackbutton.setEnabled(True)
         self.ui.readboot2btn.setEnabled(True)
         self.ui.readrpmbbtn.setEnabled(True)
         self.ui.readflashbtn.setEnabled(True)
@@ -231,6 +237,7 @@ class MainWindow(QMainWindow):
 
     def setdevhandler(self, devhandler):
         self.devhandler = devhandler
+        self.volume = ext4.Volume(self.devhandler.da_handler)
         devhandler.sendToProgressSignal.connect(self.updateProgress)
         devhandler.update_status_text.connect(self.update_status_text)
 
@@ -240,6 +247,8 @@ class MainWindow(QMainWindow):
         self.readflash.enableButtonsSignal.connect(self.enablebuttons)
         self.readflash.disableButtonsSignal.connect(self.disablebuttons)
         self.ui.readpartitionsbtn.clicked.connect(self.readflash.dumpPartition)
+        self.ui.loadbackbutton.clicked.connect(self.on_load_go_back)
+
         self.ui.readselectallcheckbox.clicked.connect(self.readflash.selectAll)
         self.ui.readpreloaderbtn.clicked.connect(self.on_readpreloader)
         self.ui.readflashbtn.clicked.connect(self.on_readfullflash)
@@ -288,6 +297,7 @@ class MainWindow(QMainWindow):
     def disablebuttons(self):
         self.ui.readpreloaderbtn.setEnabled(False)
         self.ui.readpartitionsbtn.setEnabled(False)
+        # self.ui.loadbackbutton.setEnabled(False)
         self.ui.readboot2btn.setEnabled(False)
         self.ui.readrpmbbtn.setEnabled(False)
         self.ui.readflashbtn.setEnabled(False)
@@ -310,6 +320,7 @@ class MainWindow(QMainWindow):
     def enablebuttons(self):
         self.ui.readpreloaderbtn.setEnabled(True)
         self.ui.readpartitionsbtn.setEnabled(True)
+        # self.ui.loadbackbutton.setEnabled(True)
         self.ui.readboot2btn.setEnabled(True)
         self.ui.readrpmbbtn.setEnabled(True)
         self.ui.readflashbtn.setEnabled(True)
@@ -338,8 +349,10 @@ class MainWindow(QMainWindow):
         if guid_gpt is None:
             print("Error reading gpt")
             self.ui.readtitle.setText(QCoreApplication.translate("main","Error reading gpt"))
+            self.ui.loadtitle.setText(QCoreApplication.translate("main","Error reading gpt"))
         else:
             self.ui.readtitle.setText(QCoreApplication.translate("main","Select partitions to dump"))
+            self.ui.loadtitle.setText(QCoreApplication.translate("main", "Select partitions to load"))
 
         readpartitionListWidgetVBox = QVBoxLayout()
         readpartitionListWidget = QWidget(self)
@@ -351,6 +364,7 @@ class MainWindow(QMainWindow):
         self.ui.readpartitionList.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.readpartitionCheckboxes = {}
+
         for partition in guid_gpt.partentries:
             self.readpartitionCheckboxes[partition.name] = {}
             self.readpartitionCheckboxes[partition.name]['size'] = (partition.sectors * guid_gpt.sectorsize)
@@ -359,6 +373,25 @@ class MainWindow(QMainWindow):
                                                                     convert_size(
                                                                         partition.sectors * guid_gpt.sectorsize) + ")")
             readpartitionListWidgetVBox.addWidget(self.readpartitionCheckboxes[partition.name]['box'])
+
+        loadpartitionListWidgetVBox = QVBoxLayout()
+        loadpartitionListWidget = QWidget(self)
+        loadpartitionListWidget.setLayout(loadpartitionListWidgetVBox)
+        self.ui.loadpartitionList.setWidget(loadpartitionListWidget)
+        self.ui.loadpartitionList.setWidgetResizable(True)
+        #self.ui.loadpartitionList.setGeometry(10,40,380,320)
+        self.ui.loadpartitionList.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.ui.loadpartitionList.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.loadpartitionCheckbutton = {}
+        for partition in guid_gpt.partentries:
+            self.loadpartitionCheckbutton[partition.name] = {}
+            self.loadpartitionCheckbutton[partition.name]['size'] = (partition.sectors * guid_gpt.sectorsize)
+            self.loadpartitionCheckbutton[partition.name]['button'] = QPushButton()
+            self.loadpartitionCheckbutton[partition.name]['button'].setText(partition.name + " (" +
+                                                                        convert_size(
+                                                                            partition.sectors * guid_gpt.sectorsize) + ")")
+            self.loadpartitionCheckbutton[partition.name]['button'].clicked.connect(partial(self.on_load, partition.name, 2, 2))
+            loadpartitionListWidgetVBox.addWidget(self.loadpartitionCheckbutton[partition.name]['button'])
 
         writepartitionListWidgetVBox = QVBoxLayout()
         writepartitionListWidget = QWidget(self)
@@ -461,6 +494,114 @@ class MainWindow(QMainWindow):
 
     def on_readpreloader(self):
         self.readflash.dumpFlash("boot1")
+
+    def on_load_go_back(self):
+        if self.volume.cur_inode == 2:
+            self.volume.platform64 = True
+            data, guid_gpt = self.devhandler.da_handler.mtk.daloader.get_gpt()
+            if guid_gpt is not None:
+                loadpartitionListWidgetVBox = QVBoxLayout()
+                loadpartitionListWidget = QWidget(self)
+                loadpartitionListWidget.setLayout(loadpartitionListWidgetVBox)
+                self.ui.loadpartitionList.setWidget(loadpartitionListWidget)
+                self.ui.loadpartitionList.setWidgetResizable(True)
+                # self.ui.loadpartitionList.setGeometry(10,40,380,320)
+                self.ui.loadpartitionList.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+                self.ui.loadpartitionList.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                self.loadpartitionCheckbutton = {}
+                for partition in guid_gpt.partentries:
+                    self.loadpartitionCheckbutton[partition.name] = {}
+                    self.loadpartitionCheckbutton[partition.name]['size'] = (partition.sectors * guid_gpt.sectorsize)
+                    self.loadpartitionCheckbutton[partition.name]['button'] = QPushButton()
+                    self.loadpartitionCheckbutton[partition.name]['button'].setText(partition.name + " (" +
+                                                                                    convert_size(
+                                                                                        partition.sectors * guid_gpt.sectorsize) + ")")
+                    self.loadpartitionCheckbutton[partition.name]['button'].clicked.connect(
+                        partial(self.on_load, partition.name, 2, 2))
+                    loadpartitionListWidgetVBox.addWidget(self.loadpartitionCheckbutton[partition.name]['button'])
+
+        else:
+            pre_node = self.volume.get_pre_inode()
+            print("pre_inode:%d" %(pre_node))
+            self.on_load(self.volume.partition, pre_node, None)
+
+    def on_load(self, partition='system', dir_inode_idx=2, pre_inode_idx=2):
+        if partition not in self.volume.superblockList:
+            self.readflash.dumpSinglePartition(partition, self.volume)
+            if partition not in self.volume.superblockList:
+                return
+        else:
+            self.volume.superblock = self.volume.superblockList[partition]
+            self.volume.group_descriptors = self.volume.group_descriptorsList[partition]
+            self.volume.partition = partition
+
+
+
+        loadpartitionListWidgetVBox = QVBoxLayout()
+        loadpartitionListWidget = QWidget(self)
+        loadpartitionListWidget.setLayout(loadpartitionListWidgetVBox)
+        self.ui.loadpartitionList.setWidget(loadpartitionListWidget)
+        self.ui.loadpartitionList.setWidgetResizable(True)
+        #self.ui.loadpartitionList.setGeometry(10,40,380,320)
+        self.ui.loadpartitionList.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.ui.loadpartitionList.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+
+        self.volume.cur_inode = dir_inode_idx
+        self.volume.partition = partition
+        if partition not in self.volume.preInodeMap:
+            self.volume.preInodeMap[partition] = {}
+        if pre_inode_idx != None:
+            self.volume.preInodeMap[partition][dir_inode_idx] = pre_inode_idx
+        else:
+            pre_inode_idx = self.volume.get_pre_inode()
+
+
+        current_inode = self.volume.get_inode(dir_inode_idx)
+        if current_inode.is_dir:
+            self.loadpartitionCheckbutton = {}
+            for file_name, inode_idx, file_type in current_inode.open_dir():
+                if inode_idx == dir_inode_idx:
+                    continue
+                elif inode_idx == pre_inode_idx:
+                    continue
+                self.loadpartitionCheckbutton[file_name] = {}
+                self.loadpartitionCheckbutton[file_name]['button'] = QPushButton()
+                self.loadpartitionCheckbutton[file_name]['button'].setText(file_name)
+                self.loadpartitionCheckbutton[file_name]['button'].clicked.connect(partial(self.on_load, partition, inode_idx, dir_inode_idx))
+                loadpartitionListWidgetVBox.addWidget(self.loadpartitionCheckbutton[file_name]['button'])
+        else:
+            reader = current_inode.open_read()
+            raw = reader.read()
+            self.text_browser_raw = QTextBrowser()
+            self.text_browser_raw.setText(raw.hex())
+            decode_raw = raw.decode('utf-8', 'ignore')
+            self.text_browser_decode = QTextBrowser()
+            self.text_browser_decode.setText(decode_raw)
+
+            self.scrollbar1 = self.text_browser_raw.verticalScrollBar()
+            self.scrollbar1.setMinimum(0)
+            self.scrollbar1.setMaximum(10000)
+            self.scrollbar1.setSingleStep(30)
+            self.scrollbar2 = self.text_browser_decode.verticalScrollBar()
+            self.scrollbar2.setMinimum(0)
+            self.scrollbar2.setMaximum(10000)
+            self.scrollbar2.setSingleStep(30)
+            self.scrollbar1.valueChanged.connect(self.scrolling1)
+            self.scrollbar2.valueChanged.connect(self.scrolling2)
+            # self.text_browser_button = QPushButton()
+            # self.text_browser_button.s
+            self.text_layout = QHBoxLayout()
+            self.text_layout.addWidget(self.text_browser_raw)
+            self.text_layout.addWidget(self.text_browser_decode)
+            loadpartitionListWidgetVBox.addLayout(self.text_layout)
+
+    def scrolling1(self):
+        self.scrollbar2.setValue(self.scrollbar1.value())
+
+    def scrolling2(self):
+        self.scrollbar1.setValue(self.scrollbar2.value())
+
 
     def on_readboot2(self):
         self.readflash.dumpFlash("boot2")
